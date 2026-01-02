@@ -4,6 +4,8 @@
   </a>
 </p>
 
+Crafted by [CodeZone](https://codezone.io).
+
 
 # DDEV Kinsta Provider (SSH / rsync)
 
