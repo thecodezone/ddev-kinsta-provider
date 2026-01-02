@@ -11,7 +11,7 @@
 
 # DDEV Kinsta Provider (SSH / rsync)
 
-This repository contains a custom **DDEV provider** for synchronizing a WordPress site hosted on **Kinsta** with a local DDEV environment using **SSH, rsync, and WP-CLI**.
+This repository contains a custom [DDEV provider](https://docs.ddev.com/en/stable/users/providers/) for synchronizing a WordPress site hosted on **Kinsta** with a local DDEV environment using **SSH, rsync, and WP-CLI**.
 
 It supports pulling and pushing:
 
