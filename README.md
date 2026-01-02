@@ -3,7 +3,7 @@
     <img alt="CodeZone" src="https://prismic-io.s3.amazonaws.com/codezone/5f2169a6-d854-478d-b0d4-93e8b18d0bb7_cz-lines-orange-dark.svg" height="100"><br />
   </a>
 </p>
-    <div style="color: #333; display: block; text-align: center;">Crafted by CodeZone</div>  
+<div style="color: #333;" align="center">Crafted by CodeZone</div>  
 
 
 
