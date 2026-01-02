@@ -37,7 +37,7 @@ ddev auth ssh
 ddev pull kinsta --skip-db
 ```
 
-### Push local database + files to Kinsta ⚠️
+### Push local database + files to Kinsta
 ```bash
 ddev auth ssh
 ddev push kinsta
@@ -249,13 +249,3 @@ Multisite or unusual setups may require adjustments.
 - **Exact mirroring**  
   Adding `--delete` to rsync will remove files on the destination that don’t exist locally.  
   This is powerful and dangerous — use sparingly.
-
----
-
-## Summary
-
-- This provider is intentionally **simple and explicit**
-- It follows standard DDEV patterns (`--skip-db`, `--skip-files`)
-- It favors clarity and safety over clever flags
-
-If you understand what each command does, you’re unlikely to be surprised by it — which is exactly the point.
