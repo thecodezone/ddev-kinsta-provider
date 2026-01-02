@@ -1,7 +1,7 @@
-<p align="center">
+<p align="center" style="margin-bottom: 15px;">
   <a href="https://codezone.io/">
     <img alt="CodeZone" src="https://prismic-io.s3.amazonaws.com/codezone/5f2169a6-d854-478d-b0d4-93e8b18d0bb7_cz-lines-orange-dark.svg" height="100"><br />
-    <div style="color: black!important;">Crafted by CodeZone</i>  
+    <i style="color: #333; display: block; text-align: center;">Crafted by CodeZone</i>  
   </a>
 </p>
 
