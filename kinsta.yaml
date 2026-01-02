@@ -1,0 +1,269 @@
+#ddev-generated
+# Kinsta (SSH / rsync) provider configuration
+#
+# ----------------------------------------------------------------------
+# QUICK HOW-TO
+# ----------------------------------------------------------------------
+#
+# Pull database + files from Kinsta:
+#   ddev auth ssh
+#   ddev pull kinsta
+#
+# Pull database only:
+#   ddev auth ssh
+#   ddev pull kinsta --skip-files
+#
+# Pull files only (uploads + plugins):
+#   ddev auth ssh
+#   ddev pull kinsta --skip-db
+#
+# Push local database + files to Kinsta (DANGEROUS):
+#   ddev auth ssh
+#   ddev push kinsta
+#
+# Push database only:
+#   ddev auth ssh
+#   ddev push kinsta --skip-files
+#
+# Push files only:
+#   ddev auth ssh
+#   ddev push kinsta --skip-db
+#
+# Notes:
+# - `ddev auth ssh` only needs to be run once per DDEV session or reboot.
+# - The provider name comes from this file: kinsta.yaml → `ddev pull kinsta`.
+# - Push commands can overwrite remote data. Read the explanation below.
+#
+# ----------------------------------------------------------------------
+# WHAT THIS PROVIDER DOES
+# ----------------------------------------------------------------------
+#
+# This provider uses SSH, rsync, and WP-CLI to synchronize a WordPress site
+# between a remote Kinsta environment and a local DDEV project.
+#
+# Pull (`ddev pull kinsta`) does:
+# - Database:
+#   1. SSH into the remote server.
+#   2. Export the WordPress database using WP-CLI.
+#   3. Gzip the export on the remote server.
+#   4. Rsync the compressed dump down to the local DDEV container.
+#   5. Import the database locally.
+#   6. Run wp search-replace to update remote URLs → local URLs.
+#
+# - Files:
+#   - Rsync wp-content/uploads
+#   - Rsync wp-content/plugins
+#
+# Push (`ddev push kinsta`) does the reverse:
+# - Exports the local database, gzips it, uploads it to the remote server,
+#   imports it there, and runs wp search-replace (local → remote).
+# - Rsyncs local uploads and plugins to the remote site.
+#
+# ----------------------------------------------------------------------
+# REQUIREMENTS
+# ----------------------------------------------------------------------
+#
+# - SSH access to the remote server (host, port, user).
+# - WP-CLI installed and working:
+#   - Inside the DDEV web container (local)
+#   - On the remote server
+# - Your SSH key must be loaded for the session:
+#     ddev auth ssh
+#
+# ----------------------------------------------------------------------
+# CONFIGURATION VARIABLES
+# ----------------------------------------------------------------------
+#
+# environment_variables:
+#
+# - host:
+#     Remote server IP or hostname.
+#
+# - port:
+#     SSH port for the remote server.
+#
+# - user:
+#     SSH user used to connect to the server.
+#
+# - sitePath:
+#     Path (on the remote server) to the WordPress root directory.
+#     This must be the directory where wp-config.php lives and where
+#     WP-CLI commands like `wp option get siteurl` work.
+#
+#     Examples:
+#       sitePath: public
+#       sitePath: /www/example_123/public
+#
+# - dbPath:
+#     Remote directory (under the user’s home directory) used to
+#     temporarily store the database export.
+#
+# - dbFileName:
+#     Base filename for the database dump (without .gz).
+#
+# ----------------------------------------------------------------------
+# SAFETY NOTES (READ BEFORE USING PUSH)
+# ----------------------------------------------------------------------
+#
+# - `ddev push kinsta` can overwrite a live database and uploaded files.
+# - Treat push as a destructive operation:
+#   - Prefer pushing only to staging environments.
+#   - Take a Kinsta backup or snapshot first.
+#   - Avoid push on production unless you are certain.
+#
+# ----------------------------------------------------------------------
+# COMMON TROUBLESHOOTING
+# ----------------------------------------------------------------------
+#
+# - “Please 'ddev auth ssh' before running this command.”
+#   → Run: ddev auth ssh
+#
+# - SSH works on host but fails during pull/push:
+#   → Test inside the container:
+#       ddev ssh
+#       ssh -p <port> <user>@<host>
+#
+# - WP-CLI not found on remote:
+#   → Ensure wp is installed and available in PATH for the SSH user.
+#
+# - Wrong sitePath:
+#   → Verify with:
+#       ssh -p <port> <user>@<host> "cd <sitePath> && wp option get siteurl"
+#
+# - URL replacement issues:
+#   → This provider uses wp search-replace with `--precise` and
+#     `--recurse-objects`. Multisite or unusual setups may require
+#     additional flags or manual replacements.
+#
+# ----------------------------------------------------------------------
+# CUSTOMIZATION TIPS
+# ----------------------------------------------------------------------
+#
+# - If plugins are managed via Composer and should NOT be synced,
+#   remove the plugins rsync lines from files_pull_command and
+#   files_push_command.
+#
+# - To mirror uploads exactly, add `--delete` to the uploads rsync
+#   command (dangerous — deletions are permanent).
+#
+# ----------------------------------------------------------------------
+# END DOCUMENTATION
+# ----------------------------------------------------------------------
+
+environment_variables:
+  host: 35.246.57.231
+  port: 62497
+  user: multiplyingdisciplers
+  dbFileName: db.sql
+  dbPath: tmp
+  sitePath: public
+
+auth_command:
+  command: |
+    set -eu -o pipefail
+    ssh-add -l >/dev/null || ( echo "Please 'ddev auth ssh' before running this command." && exit 1 )
+
+db_pull_command:
+  command: |
+    set -x
+    set -eu -o pipefail
+
+    sshurl="${user}@${host}"
+    dbpath="${dbPath:-tmp}"
+    dbfilename="${dbFileName:-db.sql}"
+    dburl="${sshurl}:${dbpath}/${dbfilename}.gz"
+
+    remoteurl=$(ssh "${sshurl}" -p "${port}" "cd '${sitePath}' && wp option get siteurl" 2>&1)
+    localurl=$(wp option get siteurl 2>&1)
+
+    downloadspath="/var/www/html/.ddev/.downloads"
+    mkdir -p "${downloadspath}"
+
+    # Ensure remote directory exists before creating the db file
+    ssh "${sshurl}" -p "${port}" "mkdir -p ~/${dbpath}"
+
+    # Export DB on remote into ~/dbPath/dbFileName.gz
+    ssh "${sshurl}" -p "${port}" "cd '${sitePath}' && wp db export - | gzip > ~/${dbpath}/${dbfilename}.gz"
+
+    # Pull it down, import, then swap URLs
+    rsync -avzp -e "ssh -p ${port}" "${dburl}" "${downloadspath}/"
+    gzip -df "${downloadspath}/${dbfilename}.gz"
+    wp db import "${downloadspath}/${dbfilename}"
+    wp search-replace "${remoteurl}" "${localurl}" --all-tables-with-prefix --precise --recurse-objects --skip-columns=guid
+  service: web
+
+files_pull_command:
+  command: |
+    # set -x   # enable for debugging
+    set -eu -o pipefail
+
+    sshurl="${user}@${host}"
+
+    remoteSite="${sshurl}:${sitePath}"
+    remoteUploads="${remoteSite}/wp-content/uploads"
+    remotePlugins="${remoteSite}/wp-content/plugins"
+
+    localUploads="/var/www/html/wp-content/uploads"
+    localPlugins="/var/www/html/wp-content/plugins"
+
+    # Ensure local dirs exist
+    mkdir -p "${localUploads}" "${localPlugins}"
+
+    # Pull plugins + uploads into the actual WP dirs
+    rsync -chavzP -e "ssh -p ${port}" "${remotePlugins}/." "${localPlugins}/."
+    rsync -chavzP -e "ssh -p ${port}" "${remoteUploads}/." "${localUploads}/."
+  service: web
+
+db_push_command:
+  command: |
+    set -x
+    set -eu -o pipefail
+
+    sshurl="${user}@${host}"
+    dbpath="${dbPath:-tmp}"
+    dbfilename="${dbFileName:-db.sql}"
+
+    remoteurl=$(ssh "${sshurl}" -p "${port}" "cd '${sitePath}' && wp option get siteurl" 2>&1)
+    localurl=$(wp option get siteurl 2>&1)
+
+    downloadspath="/var/www/html/.ddev/.downloads"
+    mkdir -p "${downloadspath}"
+    localgz="${downloadspath}/${dbfilename}.gz"
+
+    # Export local DB and gzip it
+    wp db export - | gzip > "${localgz}"
+
+    # Ensure remote dir exists, get absolute path, upload dump
+    remotedir=$(ssh "${sshurl}" -p "${port}" "mkdir -p ~/${dbpath} && cd ~/${dbpath} && pwd")
+    remotegz="${remotedir}/${dbfilename}.gz"
+
+    rsync -avzp -e "ssh -p ${port}" "${localgz}" "${sshurl}:${remotegz}"
+
+    # Import on remote + replace URLs (local -> remote)
+    ssh "${sshurl}" -p "${port}" "cd '${sitePath}' && \
+      gzip -dc '${remotegz}' | wp db import - && \
+      wp search-replace '${localurl}' '${remoteurl}' --all-tables-with-prefix --precise --recurse-objects --skip-columns=guid"
+  service: web
+
+files_push_command:
+  command: |
+    # set -x   # enable for debugging
+    set -eu -o pipefail
+
+    sshurl="${user}@${host}"
+
+    remoteSite="${sshurl}:${sitePath}"
+    remoteUploads="${remoteSite}/wp-content/uploads"
+    remotePlugins="${remoteSite}/wp-content/plugins"
+
+    localUploads="/var/www/html/wp-content/uploads"
+    localPlugins="/var/www/html/wp-content/plugins"
+
+    rsync -chavzP -e "ssh -p ${port}" "${localPlugins}/." "${remotePlugins}/."
+    rsync -chavzP -e "ssh -p ${port}" "${localUploads}/." "${remoteUploads}/."
+
+    # Fix permissions on uploaded images/files (optional)
+    ssh "${sshurl}" -p "${port}" "cd '${sitePath}' && \
+      find wp-content/uploads -type f -exec chmod 644 {} \; && \
+      find wp-content/uploads -type d -exec chmod 755 {} \;"
+  service: web
