@@ -151,9 +151,9 @@
 # ----------------------------------------------------------------------
 
 environment_variables:
-  host: 35.246.57.231
-  port: 62497
-  user: multiplyingdisciplers
+  host: 12.234.67.891
+  port: 12345
+  user: sshuser
   dbFileName: db.sql
   dbPath: tmp
   sitePath: public
@@ -192,7 +192,7 @@ db_pull_command:
     wp search-replace "${remoteurl}" "${localurl}" --all-tables-with-prefix --precise --recurse-objects --skip-columns=guid
   service: web
 
-files_pull_command:
+files_import_command:
   command: |
     # set -x   # enable for debugging
     set -eu -o pipefail
